@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, setPrefs } from '@/lib/db';
+import { useSession } from '@/hooks';
 import { newId, put } from '@/lib/writes';
 import { nowIso } from '@/lib/time';
 import { ACCENTS } from '@/data/accents';
 import { DEFAULT_FAVOURITE_TAG_IDS, PRESET_TAGS } from '@/data/presetTags';
 import { CheckIcon, EnvelopeIcon, MoonIcon } from '@/components/Icons';
-import { isSupabaseConfigured, sendMagicLink } from '@/lib/supabase';
+import { findExistingHousehold, isSupabaseConfigured, sendMagicLink } from '@/lib/supabase';
+import { pullChanges } from '@/lib/sync';
 import type { Child, Household, HouseholdMember } from '@/types';
 
 type Step = 'email' | 'sent' | 'household' | 'child' | 'done';
@@ -19,7 +21,10 @@ type Step = 'email' | 'sent' | 'household' | 'child' | 'done';
  */
 export default function Onboarding() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>(() => (isSupabaseConfigured() ? 'email' : 'household'));
+  const { loading: authLoading, session } = useSession();
+  // Null until auth resolves — rendering a step before then is what made a
+  // magic-link return land back on the email screen.
+  const [step, setStep] = useState<Step | null>(null);
   const [email, setEmail] = useState('');
   const [house, setHouse] = useState('');
   const [childName, setChildName] = useState('');
@@ -27,6 +32,39 @@ export default function Onboarding() {
   const [color, setColor] = useState(0);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Choose the entry point once, as soon as the session is known.
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (step === null) {
+      if (!isSupabaseConfigured()) {
+        setStep('household');
+        return;
+      }
+      if (!session) {
+        setStep('email');
+        return;
+      }
+      void (async () => {
+        await setPrefs({ userId: session.user.id });
+        // Already a member somewhere? Adopt that household instead of building
+        // a second one — this is the reinstall / second-device path.
+        const existing = await findExistingHousehold(session.user.id);
+        if (existing) {
+          await setPrefs({ householdId: existing });
+          await pullChanges(existing);
+          navigate('/log');
+          return;
+        }
+        setStep('household');
+      })();
+      return;
+    }
+
+    // Signed in while sitting on the email screen (same tab): move on.
+    if (session && (step === 'email' || step === 'sent')) setStep('household');
+  }, [authLoading, session, step, navigate]);
 
   async function send() {
     setError(null);
@@ -48,7 +86,9 @@ export default function Onboarding() {
       updated_at: now,
     } as Household & { id: string; updated_at: string });
 
-    const userId = (await db.prefs.get('prefs'))?.userId ?? null;
+    // Straight from the session — reading it back from prefs races the auth
+    // listener that writes it.
+    const userId = session?.user.id ?? null;
 
     await put<HouseholdMember>('household_members', {
       id: newId(),
@@ -56,7 +96,7 @@ export default function Onboarding() {
       user_id: userId ?? 'local',
       role: 'owner',
       display_name: null,
-      email: email || null,
+      email: session?.user.email ?? email ?? null,
       joined_at: now,
       updated_at: now,
       deleted_at: null,

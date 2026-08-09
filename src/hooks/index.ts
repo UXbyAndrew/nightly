@@ -1,7 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { db, getPrefs, setPrefs } from '@/lib/db';
 import { findOpenSession } from '@/lib/sessions';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { PRESET_TAGS } from '@/data/presetTags';
 import type { Child, DayTag, LocalPrefs, SleepSession, SleepSessionTag, Tag } from '@/types';
 
@@ -125,6 +127,38 @@ export function useNow(enabled = true): number {
     return () => window.clearInterval(id);
   }, [enabled]);
   return now;
+}
+
+/**
+ * Current auth session. `loading` stays true until the answer is known, so
+ * callers never briefly treat a signed-in user as signed out — which is exactly
+ * what sent people back to the email screen after clicking a magic link.
+ */
+export function useSession(): { loading: boolean; session: Session | null } {
+  const [state, setState] = useState<{ loading: boolean; session: Session | null }>({
+    loading: true,
+    session: null,
+  });
+
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !supabase) {
+      setState({ loading: false, session: null });
+      return;
+    }
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setState({ loading: false, session: data.session });
+    });
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) setState({ loading: false, session });
+    });
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  return state;
 }
 
 export function useOnline(): boolean {

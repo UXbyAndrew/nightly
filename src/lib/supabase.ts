@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * Supabase client.
@@ -35,6 +35,31 @@ export async function getUserId(): Promise<string | null> {
   if (!supabase) return null;
   const { data } = await supabase.auth.getUser();
   return data.user?.id ?? null;
+}
+
+export async function getSession(): Promise<Session | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session;
+}
+
+/**
+ * Find a household this user already belongs to.
+ *
+ * Covers the case where someone signs in on a second device, reinstalls, or
+ * clears their browser: without this they'd be walked through onboarding again
+ * and end up creating a duplicate household alongside the real one.
+ */
+export async function findExistingHousehold(userId: string): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('household_members')
+    .select('household_id')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .limit(1);
+  if (error || !data?.length) return null;
+  return data[0].household_id as string;
 }
 
 export async function signOut(): Promise<void> {
