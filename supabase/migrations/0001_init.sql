@@ -116,8 +116,11 @@ create table day_tags (
 -- Two devices can edit the same row while both are offline. Resolving this on the
 -- server rather than the client makes it order-independent: whichever edit carries
 -- the later updated_at survives, no matter which phone reconnects first.
+-- Empty search_path: this function touches no tables, so pinning it closes the
+-- mutable-search_path hole the database linter flags.
 create or replace function lww_guard() returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   if new.updated_at <= old.updated_at then
@@ -241,6 +244,18 @@ begin
   return v_household_id;
 end;
 $$;
+
+-- ------------------------------------------------- function exposure hardening
+
+-- Both helpers are SECURITY DEFINER, which PostgREST would otherwise expose as
+-- public RPC endpoints. is_household_member has to stay callable by
+-- `authenticated` because RLS policies evaluate it as the querying role, and
+-- redeem_invite is the invite flow itself — but neither is any use to `anon`.
+revoke execute on function public.is_household_member(uuid) from public, anon;
+grant execute on function public.is_household_member(uuid) to authenticated;
+
+revoke execute on function public.redeem_invite(text) from public, anon;
+grant execute on function public.redeem_invite(text) to authenticated;
 
 -- ------------------------------------------------------------------- realtime
 
