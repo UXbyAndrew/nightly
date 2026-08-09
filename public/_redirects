@@ -1,0 +1,4 @@
+# SPA catch-all. Without this, a direct load of any route other than "/" 404s on
+# Cloudflare Pages — which would break invite links (/join/MOON-4821) and the
+# magic-link return, since neither has the service worker registered yet.
+/*  /index.html  200
