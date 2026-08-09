@@ -7,7 +7,12 @@ import { nowIso } from '@/lib/time';
 import { ACCENTS } from '@/data/accents';
 import { DEFAULT_FAVOURITE_TAG_IDS, PRESET_TAGS } from '@/data/presetTags';
 import { CheckIcon, EnvelopeIcon, MoonIcon } from '@/components/Icons';
-import { findExistingHousehold, isSupabaseConfigured, sendMagicLink } from '@/lib/supabase';
+import {
+  findExistingHousehold,
+  isSupabaseConfigured,
+  sendMagicLink,
+  signInWithPassword,
+} from '@/lib/supabase';
 import { pullChanges } from '@/lib/sync';
 import type { Child, Household, HouseholdMember } from '@/types';
 
@@ -32,6 +37,13 @@ export default function Onboarding() {
   const [color, setColor] = useState(0);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The link is still the default; the password path exists because the built-in
+  // mailer only allows two emails an hour.
+  const [authMode, setAuthMode] = useState<'link' | 'password'>('link');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const canSubmit = authMode === 'link' ? !!email : !!email && !!password;
 
   // Choose the entry point once, as soon as the session is known.
   useEffect(() => {
@@ -66,11 +78,25 @@ export default function Onboarding() {
     if (session && (step === 'email' || step === 'sent')) setStep('household');
   }, [authLoading, session, step, navigate]);
 
-  async function send() {
+  async function submit() {
+    if (!canSubmit || busy) return;
     setError(null);
-    const result = await sendMagicLink(email);
-    if (result.ok) setStep('sent');
-    else setError(result.error);
+    setBusy(true);
+    try {
+      if (authMode === 'password') {
+        const result = await signInWithPassword(email, password);
+        // On success the session listener takes over and moves the step along.
+        if (!result.ok) setError(result.error);
+        return;
+      }
+      const result = await sendMagicLink(email);
+      if (result.ok) setStep('sent');
+      else if (result.error.toLowerCase().includes('rate limit'))
+        setError("That's two emails this hour, which is the limit. Use a password instead.");
+      else setError(result.error);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function finish() {
@@ -173,21 +199,55 @@ export default function Onboarding() {
                   : 'var(--line)',
               }}
             />
+            {authMode === 'password' && (
+              <>
+                <div className="mb-2 mt-[18px] text-[12.5px] font-semibold text-muted">
+                  Password
+                </div>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void submit();
+                  }}
+                  placeholder="••••••••"
+                  className="h-14 w-full rounded-[18px] border bg-surface px-4 text-[16.5px] outline-none transition-colors placeholder:text-faint"
+                  style={{
+                    borderColor: password
+                      ? 'color-mix(in oklab, var(--asleep) 50%, var(--line))'
+                      : 'var(--line)',
+                  }}
+                />
+              </>
+            )}
             <p className="mx-[2px] mt-[11px] text-[12.5px] leading-[1.5] text-faint">
-              We'll email a link. No password, ever.
+              {authMode === 'link'
+                ? "We'll email a link. Nothing to remember."
+                : 'Signing in with the password on your account.'}
             </p>
             {error && <p className="mx-[2px] mt-2 text-[12.5px] text-danger">{error}</p>}
           </div>
           <button
-            onClick={send}
-            disabled={!email}
+            onClick={() => void submit()}
+            disabled={!canSubmit || busy}
             className="press flex h-[58px] shrink-0 items-center justify-center rounded-[19px] text-[16.5px] font-bold transition-colors duration-300"
             style={{
-              background: email ? 'var(--text)' : 'var(--surface)',
-              color: email ? 'var(--bg)' : 'var(--faint)',
+              background: canSubmit ? 'var(--text)' : 'var(--surface)',
+              color: canSubmit ? 'var(--bg)' : 'var(--faint)',
             }}
           >
-            Send me a link
+            {busy ? 'One moment…' : authMode === 'link' ? 'Send me a link' : 'Sign in'}
+          </button>
+          <button
+            onClick={() => {
+              setAuthMode(authMode === 'link' ? 'password' : 'link');
+              setError(null);
+            }}
+            className="press mt-3 flex h-11 shrink-0 items-center justify-center text-[13.5px] font-semibold text-faint"
+          >
+            {authMode === 'link' ? 'Use a password instead' : 'Email me a link instead'}
           </button>
         </div>
       )}

@@ -37,6 +37,29 @@ export async function getUserId(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
+/**
+ * Password sign-in, offered alongside the magic link.
+ *
+ * The design called for links only, but Supabase's built-in mailer allows just
+ * two emails an hour, which is enough to lock you out of your own app. This is
+ * the escape hatch; the link remains the default path.
+ */
+export async function signInWithPassword(
+  email: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!supabase) return { ok: false, error: 'Not connected to a backend yet.' };
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (!error) return { ok: true };
+  return {
+    ok: false,
+    error:
+      error.message === 'Invalid login credentials'
+        ? "That email and password don't match."
+        : error.message,
+  };
+}
+
 export async function getSession(): Promise<Session | null> {
   if (!supabase) return null;
   const { data } = await supabase.auth.getSession();
