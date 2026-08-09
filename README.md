@@ -81,15 +81,24 @@ naps. Correlation should rank travel and teething as the biggest negatives.
 To wipe everything and re-onboard, delete the `nightly` IndexedDB database in
 DevTools → Application → Storage.
 
-## Connecting the backend
+## Backend
 
-1. Create a Supabase project.
-2. Run `supabase/migrations/0001_init.sql` in the SQL editor.
-3. Copy `.env.example` to `.env.local` and fill in the project URL and anon key.
-4. Restart the dev server.
+Supabase project **nightly** (`hyxddkrmlaarzeyylqzy`, org UXbyAndrew, eu-west-1)
+is provisioned, migrated and seeded. Credentials are in `.env.local`, which is
+gitignored — anyone else cloning this repo copies `.env.example` and fills it in.
 
 The app switches on magic-link sign-in, invites, and cross-device sync when those
 env vars are present, and silently stays local-only when they aren't.
+
+### One remaining manual step
+
+Magic links redirect to `window.location.origin`, so every origin you sign in
+from has to be allowlisted in **Authentication → URL Configuration**:
+
+- Site URL: your deployed URL once it exists
+- Redirect URLs: `http://localhost:5173/**` (and your deploy URL)
+
+Without this the email link bounces with a redirect error.
 
 ## Design decisions worth knowing
 
