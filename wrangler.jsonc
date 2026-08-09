@@ -1,0 +1,13 @@
+{
+  // Static-assets-only Worker: there is no server-side code, so no "main" entry.
+  // Cloudflare's build runs `npm run build`, then `wrangler deploy` uploads ./dist.
+  "name": "nightly",
+  "compatibility_date": "2026-08-09",
+  "assets": {
+    "directory": "./dist",
+    // Serves index.html for any unmatched path so the client router handles it.
+    // Without this, a direct load of /join/MOON-4821 or /timeline would 404 —
+    // the service worker isn't registered yet on a first visit.
+    "not_found_handling": "single-page-application"
+  }
+}
