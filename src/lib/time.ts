@@ -83,6 +83,23 @@ export function minutesIntoDay(iso: string): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/** ISO → the value a <input type="datetime-local"> expects, in local time. */
+export function toLocalInput(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
+}
+
+/** The reverse. Returns null for a cleared or half-typed value. */
+export function fromLocalInput(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function shiftIso(iso: string, deltaMinutes: number): string {
   return new Date(new Date(iso).getTime() + deltaMinutes * MS_MIN).toISOString();
 }

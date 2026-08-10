@@ -101,13 +101,17 @@ export default function QuickLog() {
   const completed = useCompletedSessions(child?.id);
   const tags = useTags();
 
+  // useLiveQuery yields undefined while the query is in flight and null when
+  // there genuinely is no open session. Conflating the two rendered "Awake" over
+  // a sleep that was already running, and invited a second one to be started.
+  const sessionLoading = open === undefined;
   const session = open ?? undefined;
   const state = stateOf(session);
   const phase = PHASES[state];
   const RingIcon = RING_ICON[state];
 
   const [mode, setMode] = useState<SleepKind>(() => suggestKind());
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(true);
   const [correctionUntil, setCorrectionUntil] = useState(0);
   const [sheetSession, setSheetSession] = useState<SleepSession | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -118,12 +122,14 @@ export default function QuickLog() {
   const now = useNow(state !== 'awake' || !!session);
   const anchor = counterAnchor(session, state);
 
-  // A parent staring at a rising number at 3am is a design failure, so the counter
-  // is opt-in while settling or in-crib, and shown by default only once asleep.
+  // The counter runs and is visible from the moment a sleep starts. The design
+  // originally concealed it while settling to avoid a parent watching a number
+  // climb at 3am, but knowing how long it's been is the point of the screen —
+  // so it shows by default and "Hide" is there for anyone who'd rather not see it.
   useEffect(() => {
     if (prevState.current === state) return;
     prevState.current = state;
-    setRevealed(state === 'asleep');
+    setRevealed(true);
     if (state !== 'awake') setCorrectionUntil(Date.now() + CORRECTION_MS);
   }, [state]);
 
@@ -168,6 +174,19 @@ export default function QuickLog() {
   }, [tags, favourites]);
 
   if (!child || !prefs?.householdId) return null;
+
+  // Hold the screen until we know the real state. A blank beat is far better
+  // than showing "Start bedtime" over a sleep that is already in progress.
+  if (sessionLoading) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center">
+        <div
+          className="size-[246px] rounded-full"
+          style={{ background: 'var(--surface)', animation: 'n-shimmer 1.6s ease-in-out infinite' }}
+        />
+      </div>
+    );
+  }
 
   async function onRingTap() {
     if (!child || !prefs?.householdId) return;

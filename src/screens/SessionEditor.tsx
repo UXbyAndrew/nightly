@@ -4,7 +4,15 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { useActiveChild, usePrefs, useSessionTags, useTags } from '@/hooks';
 import { newId, put, softDelete } from '@/lib/writes';
-import { clock, duration, minutesBetween, nowIso, relativeDayLabel, shiftIso } from '@/lib/time';
+import {
+  duration,
+  fromLocalInput,
+  minutesBetween,
+  nowIso,
+  relativeDayLabel,
+  shiftIso,
+  toLocalInput,
+} from '@/lib/time';
 import { SegmentedControl, TagPill, ValidationNote } from '@/components/ui';
 import type { SleepKind, SleepSession, SleepSessionTag } from '@/types';
 
@@ -108,8 +116,12 @@ export default function SessionEditor() {
     });
   }
 
+  function setField(field: Field, iso: string | null) {
+    setDraft((d) => (d ? { ...d, [field]: iso } : d));
+  }
+
   function clearField(field: Field) {
-    setDraft((d) => (d ? { ...d, [field]: null } : d));
+    setField(field, null);
   }
 
   async function save() {
@@ -190,19 +202,25 @@ export default function SessionEditor() {
         <div className="mb-[14px] overflow-hidden rounded-[22px] bg-surface">
           {FIELDS.map((f, i) => (
             <div key={f.key} className={i > 0 ? 'border-t border-bg px-[15px] py-[13px]' : 'px-[15px] py-[13px]'}>
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="shrink-0">
                   <div className="text-[13.5px] font-semibold">{f.label}</div>
                   <div className="mt-px text-[12px] text-faint">
                     {relativeDayLabel(draft[f.key])}
                   </div>
                 </div>
-                <div
-                  className="num text-[21px] font-semibold tracking-[-0.03em]"
-                  style={{ color: draft[f.key] ? 'var(--text)' : 'var(--faint)' }}
-                >
-                  {clock(draft[f.key])}
-                </div>
+                {/* The time itself is the input — tap it to type or use the
+                    native picker, or leave it and nudge with the steppers. */}
+                <label className="min-w-0 flex-1 text-right">
+                  <span className="sr-only">{f.label} time</span>
+                  <input
+                    type="datetime-local"
+                    value={toLocalInput(draft[f.key])}
+                    onChange={(e) => setField(f.key, fromLocalInput(e.target.value))}
+                    className="num w-full rounded-[10px] bg-transparent px-1 py-[2px] text-right text-[19px] font-semibold tracking-[-0.03em] outline-none focus:bg-surface2"
+                    style={{ color: draft[f.key] ? 'var(--text)' : 'var(--faint)', colorScheme: 'dark' }}
+                  />
+                </label>
               </div>
               <div className="mt-[10px] flex gap-[6px]">
                 {[-15, -5, 5, 15].map((d) => (

@@ -8,6 +8,10 @@ create extension if not exists "pgcrypto";
 create table households (
   id uuid primary key,
   name text not null,
+  -- Recorded so the creator can still see the row in the moment before their
+  -- membership row syncs. Without it, RLS makes creation impossible — see the
+  -- households policies below.
+  created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -172,8 +176,33 @@ as $$
   );
 $$;
 
-create policy household_access on households
-  for all using (is_household_member(id)) with check (is_household_member(id));
+-- Households need per-command policies, not a single `for all`.
+--
+-- Two traps here, both of which silently block onboarding and jam the sync
+-- outbox on its very first write:
+--   1. Requiring is_household_member(id) to INSERT can never succeed — the
+--      membership row cannot exist before the household does.
+--   2. The client syncs with upsert, and INSERT ... ON CONFLICT DO UPDATE also
+--      applies the SELECT policy, because it must be able to read a conflicting
+--      row. So a membership-only SELECT blocks creation too, even though the
+--      INSERT policy passes.
+-- created_by resolves both without opening the table up.
+create policy households_insert on households
+  for insert to authenticated
+  with check (created_by is null or created_by = auth.uid());
+
+create policy households_select on households
+  for select to authenticated
+  using (is_household_member(id) or created_by = auth.uid());
+
+create policy households_update on households
+  for update to authenticated
+  using (is_household_member(id) or created_by = auth.uid())
+  with check (is_household_member(id) or created_by = auth.uid());
+
+create policy households_delete on households
+  for delete to authenticated
+  using (is_household_member(id));
 
 create policy members_access on household_members
   for all using (is_household_member(household_id) or user_id = auth.uid())

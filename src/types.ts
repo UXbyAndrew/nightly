@@ -25,6 +25,9 @@ export interface Syncable {
 export interface Household {
   id: string;
   name: string;
+  /** Set at creation so the creator can still see the row in the moment before
+   *  their membership row syncs — see the households RLS policies. */
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }

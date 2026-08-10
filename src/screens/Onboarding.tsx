@@ -104,17 +104,17 @@ export default function Onboarding() {
 
     const householdId = newId();
     const now = nowIso();
+    // Straight from the session — reading it back from prefs races the auth
+    // listener that writes it.
+    const userId = session?.user.id ?? null;
 
     await put<Household>('households', {
       id: householdId,
       name: house.trim() || 'Our household',
+      created_by: userId,
       created_at: now,
       updated_at: now,
-    } as Household & { id: string; updated_at: string });
-
-    // Straight from the session — reading it back from prefs races the auth
-    // listener that writes it.
-    const userId = session?.user.id ?? null;
+    });
 
     await put<HouseholdMember>('household_members', {
       id: newId(),
